@@ -7,10 +7,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-c", "--choice", dest="choice", default="none",
                     choices=["distance", "delay", "both"],
                     help=">distance<: Berechnung der Gesamtflugstrecke einer Fluggesellschaft >delay<: Berechnung der "
-                         "durchschnittlichen Verspätung einer FLuggesellschaft an einem Tag\n")
+                         "durchschnittlichen Verspätung einer FLuggesellschaft an einem Tag >both<: beides")
 parser.add_argument("carrier", type=str, help="Name der Fluggesellschaft")
 parser.add_argument("date", type=str, default="00.00.00", help="Datum in der Form TT.MM.JJJ", const=1, nargs='?')
+parser.add_argument("-s", "--save", action="store_true", help="Ergebnisse werden in Textdatei geschrieben")
 args = parser.parse_args()
+
+# TODO carrier muss angegeben sein
 
 # Check, ob ein Datum angegeben wurde und ob es überhaupt gebraucht wird
 if args.date == "00.00.00" and (args.choice == "delay" or args.choice == "both"):
@@ -19,14 +22,15 @@ if args.date == "00.00.00" and (args.choice == "delay" or args.choice == "both")
 
 # Datum zerlegen und Nullen entfernen
 day, month, year = args.date.split(".")
-day = day.lstrip('0') # nur voranstehende Nullen werden entfernt
+day = day.lstrip('0')  # nur voranstehende Nullen werden entfernt
 month = month.lstrip('0')
 
 # Angegebenes Datum innerhalb des Zeitfensters (wenn benötig)?
 if args.choice != "distance" and (int(year) != 2019 or int(month) != 1 or int(day) < 1 or int(day) > 15):
     print("\nERROR: Der angegebene Tag befindet sich außerhalb des Beobachtungszeitraums.\n"
-          "Bitte ein Datum im Zeitraum 1.1.2019 - 15.1.2019 angeben.\nProgramm wird beendet." )
+          "Bitte ein Datum im Zeitraum 1.1.2019 - 15.1.2019 angeben.\nProgramm wird beendet.")
     quit()
+
 
 # Einlesen der Daten
 data = pd.read_csv("fluege_2019-01-01_2019-01-15.tsv", sep="\t")
@@ -39,11 +43,18 @@ except FileNotFoundError:
     print("\nDatei 'airlines.csv' nicht gefunden - Klarnamen der Fluggesellschaften können nicht angegeben werden.")
     carrier_name = args.carrier
 
+if args.save:
+    filename = open(input("\nBitte Dateinamen angeben:\n")+".txt", "w")
+    filename.write("Fluggesellschaft:\t\t {carrier}\n".format(carrier=carrier_name))
+
 # Berechnung der Gesamtflugstrecke einer Gesellschaft, wenn ausgewählt
 if args.choice == "distance" or args.choice == "both":
     dist_sum = sum(data.loc[data["OP_UNIQUE_CARRIER"] == args.carrier, "DISTANCE"])
     print("\nDie von der Fluggesellschaft {carrier} insgesamt geflogene Strecke beträgt {miles} Meilen - "
           "das entspricht {km} Kilometern.\n".format(carrier=carrier_name, miles=dist_sum, km=round(dist_sum/1.609, 1)))
+    if args.save:
+        filename.write("Insgesamt geflogen:\t\t {miles} Meilen (ca. {km} km)\n".
+                       format(miles=dist_sum, km=round(dist_sum / 1.609, 1)))
 
 # Berechnung der Verspätung
 if args.choice == "both" or args.choice == "delay":
@@ -57,13 +68,14 @@ if args.choice == "both" or args.choice == "delay":
     data["DELAY_CALC"] = data.loc[data["DELAY_CALC"] > 0, "DELAY_CALC"]
     delay = data["DELAY_CALC"].mean()
 
-# TODO: Abspeichern in Textdatei: Name wählbar.
     if delay > 0:
         print("Die Fluggesellschaft {carrier} hatte am {date} eine akkumulierte Verspätung von {delay_min} Minuten, "
               "also etwa {delay_hr} Stunden!\n".format(carrier=carrier_name, date=args.date, delay_min=round(delay, 1),
                                                        delay_hr=round(delay/60, 1)))
     else:
         print("\nDie Fluggesellschaft {carrier} hatte am {date} keinerlei Verspätung. Alles lief glatt.\n".
-              format(carrier=carrier_name, date=args.date, delay_min=round(delay, 1), delay_hr = round(delay / 60, 1)))
-
-
+              format(carrier=carrier_name, date=args.date, delay_min=round(delay, 1), delay_hr=round(delay / 60, 1)))
+    if args.save:
+        filename.write("Gesamtverspätung am {date}:\t {delay_min} Min. (ca. {delay_hr} Std.)".
+                       format(date=args.date, delay_min=round(delay, 1), delay_hr=round(delay / 60, 1)))
+        filename.close()
